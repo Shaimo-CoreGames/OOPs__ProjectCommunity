@@ -26,14 +26,19 @@ CREATE TABLE  Users (
     FOREIGN KEY (province_id) REFERENCES Provinces(id),
     FOREIGN KEY (district_id) REFERENCES Districts(id)
 );
+ALTER TABLE Users ADD COLUMN cnic VARCHAR(13) UNIQUE;
 
 -- Elections (optional, for extensibility)
-CREATE TABLE  Elections (
+CREATE TABLE Elections (
     id INT AUTO_INCREMENT PRIMARY KEY,
     title VARCHAR(100) NOT NULL,
-    type ENUM('local','national') NOT NULL
+    type VARCHAR(50),  -- added type column
+    date DATETIME
 );
+INSERT INTO Elections (title, type, date) 
+VALUES ('National Assembly Election', 'General', '2025-07-01');
 
+drop table Elections;
 -- Candidates (MPA and MNA)
 CREATE TABLE Candidates (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -60,6 +65,8 @@ CREATE TABLE  Votes (
     FOREIGN KEY (district_id) REFERENCES Districts(id),
     FOREIGN KEY (candidate_id) REFERENCES Candidates(id)
 );
+SELECT v.*, c.CandidateName FROM DistrictMPAWinners v
+JOIN Candidates c ON v.CandidateID = c.CandidateID;
 
 -- 1. Provinces
 INSERT INTO Provinces (name) VALUES
@@ -175,15 +182,104 @@ INSERT INTO Candidates (name, party, type, province_id, district_id) VALUES
 ('Haji Rehmat Khaliq', 'PTI', 'MPA', 5, 24),
 ('Raja Jahanzaib', 'PMLN', 'MPA', 5, 25);
 
+CREATE VIEW DistrictMPAWinners AS
+SELECT 
+    c.district_id,
+    v.candidate_id,
+    COUNT(*) AS VoteCount
+FROM 
+    Votes v
+JOIN 
+    Candidates c ON v.candidate_id = c.id
+WHERE 
+    c.type = 'MPA'
+GROUP BY 
+    c.district_id, v.candidate_id
+HAVING 
+    COUNT(*) = (
+        SELECT MAX(vc) FROM (
+            SELECT COUNT(*) AS vc
+            FROM Votes v2
+            JOIN Candidates c2 ON v2.candidate_id = c2.id
+            WHERE c2.district_id = c.district_id AND c2.type = 'MPA'
+            GROUP BY v2.candidate_id
+        ) AS VoteCounts
+    );
+
+CREATE VIEW ProvinceMNAWinners AS
+SELECT 
+    c.Province,
+    v.CandidateID,
+    COUNT(*) AS VoteCount
+FROM 
+    Votes v
+JOIN 
+    Candidates c ON v.CandidateID = c.CandidateID
+WHERE 
+    c.CandidateType = 'MNA'
+GROUP BY 
+    c.Province, v.CandidateID
+HAVING 
+    COUNT(*) = (
+        SELECT MAX(vc) FROM (
+            SELECT COUNT(*) AS vc
+            FROM Votes v2
+            JOIN Candidates c2 ON v2.CandidateID = c2.CandidateID
+            WHERE c2.Province = c.Province AND c2.CandidateType = 'MNA'
+            GROUP BY v2.CandidateID
+        ) AS VoteCounts
+    );
+
+CREATE VIEW CMSelection AS
+SELECT 
+    Province,
+    CandidateID,
+    MAX(VoteCount) AS MaxVotes
+FROM (
+    SELECT 
+        c.Province,
+        v.CandidateID,
+        COUNT(*) AS VoteCount
+    FROM 
+        Votes v
+    JOIN 
+        Candidates c ON v.CandidateID = c.CandidateID
+    WHERE 
+        c.CandidateType = 'MPA'
+    GROUP BY 
+        c.Province, v.CandidateID
+) AS ProvinceMPAVotes
+GROUP BY 
+    Province;
+CREATE VIEW PMSelection AS
+SELECT 
+    CandidateID,
+    MAX(VoteCount) AS MaxVotes
+FROM (
+    SELECT 
+        v.CandidateID,
+        COUNT(*) AS VoteCount
+    FROM 
+        Votes v
+    JOIN 
+        Candidates c ON v.CandidateID = c.CandidateID
+    WHERE 
+        c.CandidateType = 'MNA'
+    GROUP BY 
+        v.CandidateID
+) AS MNAVoteCount;
+
 INSERT INTO Users (username, password, role)
   VALUES ('admin','admin124','admin');
   select * from Users where  role = 'admin';
-DELETE FROM Users WHERE role = 'admin' AND username = 'admin';
+DELETE FROM Users WHERE username = 'admin';
 
 -- 4. (Optional) A couple of test voters
 INSERT INTO Users (username, password, role, province_id, district_id) VALUES
   ('voter1','voter124','voter', 1, 1),
   ('voter2','voter124','voter', 2, 12);
   ALTER TABLE Candidates MODIFY district_id INT DEFAULT NULL;
-
+INSERT INTO Candidates (name, party, type, province_id, district_id)
+VALUES ('Asad Umar', 'PTI', 'MNA', 1, NULL);
+SELECT * FROM Users WHERE role = 'voter';
 select * from Candidates;

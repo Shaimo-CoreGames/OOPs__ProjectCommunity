@@ -1,5 +1,6 @@
 ﻿#include <iostream>
 #include <iomanip>// setw()
+#include <algorithm> // all_of
 #include <string>
 #include <vector>
 #include <map>
@@ -7,7 +8,6 @@
 
 using namespace std;
 
-// ================= MySQLHelper Class (Your given code remains same) =================
 class MySQLHelper
 {
 private:
@@ -88,9 +88,46 @@ protected:
     string username;
 public:
     virtual void menu() = 0;
+    bool voterSignup() {
+        string username, password, cnic;
+
+        cout << "Signup as Voter\n";
+        cout << "Enter CNIC (13 digits): ";
+        getline(cin, cnic);
+
+        // CNIC validation
+        if (cnic.length() != 13 || !all_of(cnic.begin(), cnic.end(), ::isdigit)) {
+            cout << "Invalid CNIC. It must be exactly 13 digits.\n";
+            return false;
+        }
+
+        // Check if CNIC already exists
+        string checkCNICQuery = "SELECT id FROM Users WHERE cnic = '" + cnic + "'";
+        auto existing = MySQLHelper::Select(checkCNICQuery);
+        if (!existing.empty()) {
+            cout << "A user with this CNIC already exists!\n";
+            return false;
+        }
+
+        cout << "Enter Username: ";
+        getline(cin, username);
+        cout << "Enter Password: ";
+        getline(cin, password);
+
+        string insertQuery = "INSERT INTO Users (username, password, role, cnic) VALUES ('" + username + "', '" + password + "', 'voter', '" + cnic + "')";
+        if (MySQLHelper::ExecuteQuery(insertQuery)) {
+            cout << "Voter signed up successfully!\n";
+            return true;
+        }
+        else {
+            cout << "Error in signup!\n";
+            return false;
+        }
+    }
+
     bool login(const string& role)
     {
-        // Check how many admins exist
+        // kitna admins exist kar rha hain
         string checkQuery = "SELECT COUNT(*) AS count FROM Users WHERE role = 'admin'";
         auto countResult = MySQLHelper::Select(checkQuery);
 
@@ -151,15 +188,23 @@ public:
         }
         else
         {
-            // Voter or other user login
+            // Voter login
             cout << "Username: ";
             getline(cin, username);
 
-            string pwd;
+            string pwd, cnic;
             cout << "Password: ";
             getline(cin, pwd);
+            cout << "CNIC (13 digits): ";
+            getline(cin, cnic);
 
-            string q = "SELECT id FROM Users WHERE username='" + username + "' AND password='" + pwd + "' AND role='" + role + "'";
+            // Basic CNIC validation
+            if (cnic.length() != 13 || !all_of(cnic.begin(), cnic.end(), ::isdigit)) {
+                cout << "Invalid CNIC. It must be exactly 13 digits.\n";
+                return false;
+            }
+
+            string q = "SELECT id FROM Users WHERE username='" + username + "' AND password='" + pwd + "' AND role='" + role + "' AND cnic='" + cnic + "'";
             auto res = MySQLHelper::Select(q);
 
             if (!res.empty())
@@ -170,16 +215,17 @@ public:
             }
             else
             {
-                cout << "Login failed!\n";
+                cout << "Login failed! Check username, password, or CNIC.\n";
                 return false;
             }
         }
+
     }
 
 
-};
+}; 
 
-// Admin Class
+// -----------------------------------------------__Admin Class__-----------------------------------------------
 class Admin : public User {
 public:
     void menu() override {
@@ -188,23 +234,32 @@ public:
             cout << "\n=== Admin Menu ===\n"
                 << "1. Add Candidate\n"
                 << "2. View Results\n"
-                << "3. Logout\n"
-                << "Choice: "; cin >> choice;
+                << "3. Add District\n"
+                << "4. Add Province\n"
+                << "5. Logout\n"
+                << "Choice: ";
+            cin >> choice;
             switch (choice) {
             case 1: addCandidate(); break;
             case 2: viewResults(); break;
-            case 3: cout << "Logging out...\n"; break;
+            case 3: addDistrict(); break;
+            case 4: addProvince(); break;
+            case 5: cout << "Logging out...\n"; break;
             default: cout << "Invalid choice\n";
             }
-        } while (choice != 3);
+        } while (choice != 5);
     }
-    const int CANDIDATE_LIMIT = 10;  // Maximum number of candidates allowed
+
+    const int CANDIDATE_LIMIT = 5;  // Maximum number of candidates that we  allowed
     void addCandidate() {
         string name, party, type;
-        cin.ignore(); // <<< IGNORE before first getline
-        cout << "Enter Candidate Name: "; getline(cin, name);
-        cout << "Enter Party: "; getline(cin, party);
-        cout << "Type (MPA/MNA): "; getline(cin, type);
+        cin.ignore(); 
+        cout << "Enter Candidate Name: "; 
+        getline(cin, name);
+        cout << "Enter Party: "; 
+        getline(cin, party);
+        cout << "Type (MPA/MNA): "; 
+        getline(cin, type);
 
         // Query to count current candidates in the database
         string countQuery = "SELECT COUNT(*) AS candidate_count FROM Candidates WHERE type='" + type + "'";
@@ -226,23 +281,27 @@ public:
         if (type == "MPA") {
             auto provs = MySQLHelper::Select("SELECT id,name FROM Provinces");
             cout << "Provinces:\n";
-            for (auto& p : provs) cout << p.at("id") << ". " << p.at("name") << "\n";
+            for (auto& p : provs) 
+                cout << p.at("id") << ". " << p.at("name") << "\n";
 
             cout << "Select Province ID: "; cin >> province_id;
-            cin.ignore(); // <<< Important after cin >>
+            cin.ignore(); 
 
             auto dists = MySQLHelper::Select("SELECT id,name FROM Districts WHERE province_id=" + to_string(province_id));
             cout << "Districts:\n";
-            for (auto& d : dists) cout << d.at("id") << ". " << d.at("name") << "\n";
+            for (auto& d : dists) 
+                cout << d.at("id") << ". " << d.at("name") << "\n";
 
             cout << "Select District ID: "; cin >> district_id;
-            cin.ignore(); // <<< Again if you will do getline next (safe to ignore)
+            cin.ignore(); 
 
             // Insert with district_id for MPA
             string q = "INSERT INTO Candidates (name,party,type,province_id,district_id) VALUES ('" +
                 name + "','" + party + "','" + type + "'," + to_string(province_id) + "," + to_string(district_id) + ")";
-            if (MySQLHelper::ExecuteQuery(q)) cout << "Candidate added.\n";
-            else cout << "Error adding candidate.\n";
+            if (MySQLHelper::ExecuteQuery(q)) 
+                cout << "Candidate added.\n";
+            else 
+                cout << "Error adding candidate.\n";
         }
         else if (type == "MNA") {
             auto provs = MySQLHelper::Select("SELECT id,name FROM Provinces");
@@ -294,6 +353,7 @@ public:
             << " | " << r.at("candidate")
             << " (" << r.at("party") << ") - Votes: " << r.at("votes") << "\n";
 
+        //------------------------------------------*****-- Final Selection --*****-----------------------------------------
         cout << "\n--- Chief Minister Selection ---\n";
         string cm_q =
             "WITH mpa_votes AS ("
@@ -323,15 +383,105 @@ public:
             "JOIN Provinces p ON c.province_id=p.id "
             "ORDER BY mv.votes DESC LIMIT 1;";
         auto pm_res = MySQLHelper::Select(pm_q);
-        if (!pm_res.empty()) {
+        if (!pm_res.empty())
+        {
             auto& r = pm_res[0];
             cout << "PM: " << r.at("candidate")
                 << " (" << r.at("party") << "), Province: " << r.at("province")
                 << " - Votes: " << r.at("votes") << "\n";
         }
     }
+  
+    void addDistrict() {
+        string name;
+        int province_id;
+
+        auto provs = MySQLHelper::Select("SELECT id, name FROM Provinces");
+        if (provs.empty()) {
+            cout << "No provinces available. Please add a province first.\n";
+            return;
+        }
+
+        cout << "Provinces:\n";
+        for (auto& p : provs)
+            cout << p["id"] << ". " << p["name"] << "\n";
+
+        cout << "Select Province ID to add districts to: ";
+        cin >> province_id;
+        cin.ignore();
+
+        while (true) {
+            // Check how many districts already exist for this province
+            string countQuery = "SELECT COUNT(*) AS cnt FROM Districts WHERE province_id = " + to_string(province_id);
+            auto res = MySQLHelper::Select(countQuery);
+
+            int currentCount = (!res.empty()) ? stoi(res[0]["cnt"]) : 0;
+
+            if (currentCount >= 5) {
+                cout << "This province already has 5 districts. Limit reached.\n";
+                break;
+            }
+
+            cout << "Enter District Name: ";
+            getline(cin, name);
+
+            string query = "INSERT INTO Districts (name, province_id) VALUES ('" + name + "', " + to_string(province_id) + ")";
+            if (MySQLHelper::ExecuteQuery(query))
+                cout << "District added successfully.\n";
+            else
+                cout << "Error adding district.\n";
+
+            // Ask user if they want to add another (optional)
+            char choice;
+            cout << "Do you want to add another district to this province? (y/n): ";
+            cin >> choice;
+            cin.ignore();
+
+            if (choice != 'y' && choice != 'Y') {
+                break;
+            }
+        }
+    }
+
+    void addProvince() {
+        string name;
+
+        while (1) {
+            // Check total number of provinces
+            auto res = MySQLHelper::Select("SELECT COUNT(*) AS cnt FROM Provinces");
+            int currentCount = (!res.empty()) ? stoi(res[0]["cnt"]) : 0;
+
+            if (currentCount >= 5) {
+                cout << "Maximum of 5 provinces already added.\n";
+                break;
+            }
+
+            cout << "Enter Province Name: ";
+            cin.ignore();
+            getline(cin, name);
+
+            string query = "INSERT INTO Provinces (name) VALUES ('" + name + "')";
+            if (MySQLHelper::ExecuteQuery(query))
+                cout << "Province added successfully.\n";
+            else
+                cout << "Error adding province.\n";
+
+            // Ask if user wants to add another province
+            char choice;
+            cout << "Do you want to add another province? (y/n): ";
+            cin >> choice;
+            if (choice != 'y' && choice != 'Y') {
+                break;
+            }
+
+            cin.ignore(); // Clear newline before next input
+        }
+    }
+
+
 };
 
+// -----------------------------------------------__Voter Class__-----------------------------------------------
 class Voter : public User
 {
 public:
@@ -378,43 +528,138 @@ public:
         }
     };
 
-    void viewCandidates()
-    {
-        int election_id;
-        cout << "Enter Election ID: ";
-        cin >> election_id;
-        auto candidates = MySQLHelper::Select("SELECT * FROM Candidates WHERE election_id = " + to_string(election_id));
-        cout << "\n=== Candidates ===\n";
-        for (const auto& c : candidates)
-        {
-            cout << "ID: " << c.at("id") << " | Name: " << c.at("name") << " | Party: " << c.at("party") << "\n";
-        }
-    };
+    void viewCandidates() {
+        string vote_type;
+        cout << "Select Candidate Type to View (MPA/MNA): ";
+        cin >> vote_type;
+        cin.ignore();
 
-    void castVote()
-    {
-        int election_id, candidate_id;
-        cout << "Enter Election ID: ";
-        cin >> election_id;
-        cout << "Enter Candidate ID: ";
+        // Fetch and display provinces
+        auto provinces = MySQLHelper::Select("SELECT id, name FROM Provinces");
+        cout << "Available Provinces:\n";
+        for (const auto& province : provinces) {
+            cout << province.at("id") << ". " << province.at("name") << "\n";
+        }
+
+        int province_id;
+        cout << "Enter Province ID: ";
+        cin >> province_id;
+        cin.ignore();
+
+        int district_id = 0;
+        if (vote_type == "MPA") {
+            // Fetch and display districts for the selected province
+            auto districts = MySQLHelper::Select("SELECT id, name FROM Districts WHERE province_id = " + to_string(province_id));
+            cout << "Available Districts:\n";
+            for (const auto& district : districts) {
+                cout << district.at("id") << ". " << district.at("name") << "\n";
+            }
+
+            cout << "Enter District ID: ";
+            cin >> district_id;
+            cin.ignore();
+        }
+
+        // Fetch and display candidates based on selection
+        string candidate_query = "SELECT id, name, party FROM Candidates WHERE type = '" + vote_type + "' AND province_id = " + to_string(province_id);
+        if (vote_type == "MPA") {
+            candidate_query += " AND district_id = " + to_string(district_id);
+        }
+        auto candidates = MySQLHelper::Select(candidate_query);
+
+        if (candidates.empty()) {
+            cout << "No candidates found for the selected region.\n";
+            return;
+        }
+
+        cout << "Candidates:\n";
+        for (const auto& candidate : candidates) {
+            cout << "ID: " << candidate.at("id") << " | Name: " << candidate.at("name") << " | Party: " << candidate.at("party") << "\n";
+        }
+    }
+
+    void castVote() {
+        string vote_type;
+        cout << "Select Vote Type (MPA/MNA): ";
+        cin >> vote_type;
+        cin.ignore();
+
+        // Fetch and display provinces
+        auto provinces = MySQLHelper::Select("SELECT id, name FROM Provinces");
+        cout << "Provinces:\n";
+        for (const auto& province : provinces) {
+            cout << province.at("id") << ". " << province.at("name") << "\n";
+        }
+
+        int province_id;
+        cout << "Enter Province ID: ";
+        cin >> province_id;
+        cin.ignore();
+
+        int district_id = 0;
+        if (vote_type == "MPA") {
+            // Fetch and display districts for the selected province
+            auto districts = MySQLHelper::Select("SELECT id, name FROM Districts WHERE province_id = " + to_string(province_id));
+            cout << " Districts:\n";
+            for (const auto& district : districts) {
+                cout << district.at("id") << ". " << district.at("name") << "\n";
+            }
+
+            cout << "Enter District ID: ";
+            cin >> district_id;
+            cin.ignore();
+        }
+
+        // Fetch and display candidates based on selection
+        string candidate_query = "SELECT id, name, party FROM Candidates WHERE type = '" + vote_type + "' AND province_id = " + to_string(province_id);
+        if (vote_type == "MPA") {
+            candidate_query += " AND district_id = " + to_string(district_id);
+        }
+        auto candidates = MySQLHelper::Select(candidate_query);
+
+        if (candidates.empty()) {
+            cout << "No candidates found for the selected region.\n";
+            return;
+        }
+
+        cout << "Available Candidates:\n";
+        for (const auto& candidate : candidates) {
+            cout << candidate.at("id") << ". " << candidate.at("name") << " (" << candidate.at("party") << ")\n";
+        }
+
+        int candidate_id;
+        cout << "Enter Candidate ID to cast your vote: ";
         cin >> candidate_id;
+        cin.ignore();
 
-        string voterQuery = "SELECT id FROM Users WHERE username='" + username + "'";
-        auto res = MySQLHelper::Select(voterQuery);
-        if (!res.empty())
-        {
-            string voter_id = res[0].at("id");
-            string voteQuery = "INSERT INTO Votes (voter_id, candidate_id, election_id) VALUES (" + voter_id + ", " + to_string(candidate_id) + ", " + to_string(election_id) + ")";
-            if (MySQLHelper::ExecuteQuery(voteQuery))
-            {
-                cout << "Vote Casted Successfully!\n";
-            }
-            else
-            {
-                cout << "You may have already voted or error occurred.\n";
-            }
+        // Check if the voter has already voted for this type
+        string check_vote_query = "SELECT COUNT(*) AS vote_count FROM Votes WHERE voter_id = " + to_string(id) + " AND vote_type = '" + vote_type + "'";
+        auto vote_check = MySQLHelper::Select(check_vote_query);
+        if (!vote_check.empty() && stoi(vote_check[0]["vote_count"]) > 0) {
+            cout << "You have already cast your vote for " << vote_type << ".\n";
+            return;
         }
-    };
+
+        // Insert the vote
+        string insert_vote_query = "INSERT INTO Votes (voter_id, candidate_id, vote_type, province_id";
+        if (vote_type == "MPA") {
+            insert_vote_query += ", district_id";
+        }
+        insert_vote_query += ") VALUES (" + to_string(id) + ", " + to_string(candidate_id) + ", '" + vote_type + "', " + to_string(province_id);
+        if (vote_type == "MPA") {
+            insert_vote_query += ", " + to_string(district_id);
+        }
+        insert_vote_query += ")";
+
+        if (MySQLHelper::ExecuteQuery(insert_vote_query)) {
+            cout << "Your vote has been cast successfully.\n";
+        }
+        else {
+            cout << "An error occurred while casting your vote.\n";
+        }
+        
+    }
+
 };
 
 // ======================= Main Function =======================
@@ -423,9 +668,9 @@ int main()
     int choice;
     do
     {
-        cout << "\n1. Admin Login\n2. Voter Login\n3. Exit\nChoice: ";
+        cout << "\n1. Admin Login\n2. Voter Signup\n3. Voter Login\n4. Exit\nChoice: ";
         cin >> choice;
-        cin.ignore(); // <- clear buffer after number input!
+        cin.ignore(); // clear buffer
 
         if (choice == 1)
         {
@@ -436,20 +681,24 @@ int main()
         else if (choice == 2)
         {
             Voter voter;
-            if (voter.login("voter"))
-                voter.menu();
+            voter.voterSignup();
         }
         else if (choice == 3)
         {
-
+            Voter voter;
+            if (voter.login("voter"))
+                voter.menu();
+        }
+        
+        else if (choice == 4)
+        {
             cout << "Exiting...\n";
         }
         else
         {
-
             cout << "Invalid choice.\n";
         }
-    } while (choice != 3);
+    } while (choice != 4);
 
     return 0;
 }
